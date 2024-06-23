@@ -1,0 +1,68 @@
+# use Julia's packae managing module to activate your current environment
+using Pkg
+Pkg.activate(".")
+import Pkg; Pkg.add("JLD2")
+# telling Julia to load modules that we need for our code, which have been specified as dependencies for our current package
+using JLD2
+using Images, ImageFiltering
+using Plots
+# Load our example stimulus
+println("Current working directory: ", pwd())  # This will print the current directory
+
+@load "/Users/helena/vision/Assignment 4/MyPkg-2/material/img.jld2"
+normalize(img) = (img .- minimum(img)) / (maximum(img) - minimum(img))
+
+unroll(imgs) = Gray.(hcat([normalize(imgs[i,:,:]) for i in 1:size(imgs,1)]...))
+unroll(img)
+function on_cells(imgs)    
+    diff_imgs = diff(imgs, dims=3)
+    diff_imgs = max.(diff_imgs, 0)
+    return diff_imgs
+end
+on = on_cells(img)
+on_unrolled = unroll(on)
+
+println(typeof(on_unrolled))
+
+function half_detectors(ons, Δx, Δy, Δt)
+    frames, rows, cols = size(ons)
+
+    hd1 = zeros(frames - Δt, rows, cols)
+    hd2 = zeros(frames - Δt, rows, cols)
+    
+    padding_vertical = (max(Δy, 0), max(Δy, 0))
+    padding_horizontal = (max(Δx, 0), max(Δx, 0))
+    border = Pad(:symmetric, padding_vertical[1], padding_horizontal[1])
+
+    padded_ons = [padarray(ons[t, :, :], border) for t in 1:frames]
+
+    for t in 1:(frames - Δt)
+        current_frame = padded_ons[t][1:rows, 1:cols]
+        future_frame = padded_ons[t + Δt][1:rows, 1:cols]
+        hd1[t, :, :] = ons[t, :, :] .* future_frame  
+        hd2[t, :, :] = ons[t + Δt, :, :] .* current_frame 
+    end
+
+    return hd1, hd2
+end
+
+hd1, hd2 = half_detectors(on, 1, 1, 1)
+unroll(hd1)
+unroll(hd2)
+
+function full_detectors(hd1s, hd2s)
+    return hd1s - hd2s
+end
+
+fd = full_detectors(hd1, hd2)
+unroll(fd)
+
+function hrd(imgs, Δx, Δy, Δt)
+    ons = on_cells(imgs)
+    hd1, hd2 = half_detectors(ons, Δx, Δy, Δt)
+    return full_detectors(hd1, hd2)     
+end
+
+unroll(hrd(img, 1, 1, 1))
+unroll(hrd(img, 0, 3, 2))
+
